@@ -5,7 +5,7 @@
 
 偏八股
 
-Ref: 一般这些都整理的更好, star
+Ref: 这些都整理的更好, star
 
 https://github.com/minfei-miffy/Java-mianshi-note
 
@@ -14,3 +14,4 @@ https://github.com/CyC2018/CS-Notes
 https://github.com/Snailclimb/JavaGuide
 
 https://github.com/hustcc/JS-Sorting-Algorithm
+
