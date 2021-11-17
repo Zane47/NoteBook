@@ -1,4 +1,4 @@
-# 基础知识
+# · 基础知识
 
 ## 数据库范式
 
@@ -6,15 +6,15 @@
 
 
 
-# 存储引擎
+# · 存储引擎
 
 
 
-# 索引
+# · 索引
 
 
 
-## 为什么用B+树, 不用B树
+## 1. 为什么用B+树, 不用B树
 
 因为B+比B树更适合实际应用中操作系统的文件索引和数据库索引. 
 
@@ -34,15 +34,74 @@ B+树的叶节点由一条链相连，因此，当需要进行一次全数据遍
 而B树则需要对树的每一层进行遍历，这会需要更多的内存置换次数，因此也就需要花费更多的时间
 
 
-## 回表查询
+## 1. 回表查询
 
+使用explain查看sql语句的执行计划.
 
+在说到什么是回表查询的时候，有两个概念需要先解释清楚：分别是聚集索引(聚簇索引)和非聚集索引(非聚簇索引)
+
+### 聚集索引(cluster)和非聚集索引(uncluster)
+
+MySQL规定，在使用InnoDB存储引擎的时候，必须**有且仅有一个**聚集索引(cluster)，非聚集索引(uncluster)也就是普通索引就看自己设置的有多少个了
+
+聚集索引和非聚集索引的区别：
+
+1. 聚集索引(cluster)中的非叶子节点存储的是表的主键, 非聚集索引(uncluster)的非叶子节点存储的是自己设置的索引字段对应的值(如果是联合索引，那就是联合索引的几个字段对应的值)
+2. 聚集索引(cluster)的叶子节点，存储着当前表中每条记录的所有信息；非聚集索引(uncluster)的叶子节点，只存储当前记录对应的主键ID(也就是聚集索引的非叶子节点存储的值)
+
+左边的是主键索引(聚集索引)，右边的是普通索引(非聚集索引)
+
+![img](https://img-blog.csdnimg.cn/20200926083503245.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0NQTEFTRl8=,size_16,color_FFFFFF,t_70#pic_center)
+
+### 回表
+
+如果是通过**非主键索引**进行查询，select所要获取的字段**不能**通过非主键索引获取到，需要通过非主键索引获取到的主键，**从聚集索引再次查询一遍**，获取到所要查询的记录，这个查询的过程就是回表
+
+通过执行计划的Extra字段的值，可以看到当前sql是否进行了回表
+如果Extra字段值为null，我不太确定是否是一定走回表的(待确认)
+但是如果Extra为Using index,则表示当前查询，通过索引覆盖就可以获取到当前select要的值，无需通过回表查询记录
+
+### 验证
+
+```sql
+create TABLE hui_biao_test (id int not null auto_increment,name varchar(20),age int(11),first_name varchar(20),CONSTRAINT pk_id PRIMARY KEY(id));
+
+create index index_name on `hui_biao_test`(name);
+```
+
+```sql
+explain select id,name from `hui_biao_test` where name = '张三';
+
+explain select name from `hui_biao_test` where name = '张三';
+
+explain select name,age from `hui_biao_test` where name = '张三';
+```
+
+下面截图分别是这三个sql的执行计划，可以发现：
+
+第一个sql和第二个sql的Extra是Using index，说明前两个sql是索引覆盖，无需回表即可查询到当前要用的数据；
+但是第三个sql就不可以，因为有一个age字段，在name这个索引中，没有age字段的信息，只有id和name（name索引对应的B+树中的非叶子节点就是name字段的值，id就是叶子节点存储的元素），所以需要通过回表，去主键索引查询到对应的记录，然后获取到对应的age属性
+![img1](https://img-blog.csdnimg.cn/20200925163154788.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0NQTEFTRl8=,size_16,color_FFFFFF,t_70#pic_center)
+
+![img22](https://img-blog.csdnimg.cn/20200925163348338.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0NQTEFTRl8=,size_16,color_FFFFFF,t_70#pic_center)
+
+![img3](https://img-blog.csdnimg.cn/20200925163408874.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0NQTEFTRl8=,size_16,color_FFFFFF,t_70#pic_center)
+
+假如说我把name和age设置为联合索引，那最后一个sql的执行计划就会有变化
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20200925163953427.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0NQTEFTRl8=,size_16,color_FFFFFF,t_70#pic_center)
+
+可以看到，这个sql的执行计划中Extra就是Using index
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20200925164004890.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L0NQTEFTRl8=,size_16,color_FFFFFF,t_70#pic_center)
+
+说明当前联合索引的非叶子节点中，存储的是联合索引对应的信息；仅通过联合索引就可以获取到select所需要的信息，这样，就无须再经过主键索引查询了
 
 
 
 ---
 
-# MVCC(多版本并发控制)
+# · MVCC(多版本并发控制)
 
 MVCC(Multi-Version Concurrency Control) 
 
@@ -58,13 +117,13 @@ MVCC(Multi-Version Concurrency Control)
 
 ---
 
-# 读写分离
+# · 读写分离
 
 
 
 
 
-# 分库分表
+# · 分库分表
 
 
 
@@ -72,7 +131,7 @@ MVCC(Multi-Version Concurrency Control)
 
 ---
 
-# 一条SQL语句在MySQL执行过程
+# · 一条SQL语句在MySQL执行过程
 分析一个 sql 语句在 MySQL 中的执行流程，包括 sql 的查询在 MySQL 内部会怎么流转，sql 语句的更新是怎么完成的。
 
 在分析之前我会先带着你看看 MySQL 的基础架构，知道了 MySQL 由那些组件组成以及这些组件的作用是什么，可以帮助我们理解和解决这些问题。
@@ -200,7 +259,7 @@ update tb_student A set A.age='19' where A.name=' 张三 ';
 
 ---
 
-# MySQL断电恢复
+# · MySQL断电恢复
 
 
 
@@ -208,7 +267,7 @@ update tb_student A set A.age='19' where A.name=' 张三 ';
 
 ---
 
-# redo log, undo log, binlog
+# · redo log, undo log, binlog
 
 
 
@@ -216,7 +275,7 @@ update tb_student A set A.age='19' where A.name=' 张三 ';
 
 ---
 
-# 一条SQL语句执行得很慢的原因有哪些？
+# · 一条SQL语句执行得很慢的原因有哪些？
 
 
 
@@ -228,6 +287,11 @@ update tb_student A set A.age='19' where A.name=' 张三 ';
 
 ---
 
-# Reference
+# · Reference
 
-https://snailclimb.gitee.io/javaguide/#/docs/database/mysql/how-sql-executed-in-mysql
+* 执行SQL语句: https://snailclimb.gitee.io/javaguide/#/docs/database/mysql/how-sql-executed-in-mysql
+
+* 回表查询:
+  版权声明：本文为CSDN博主「小小少年_」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
+  原文链接：https://blog.csdn.net/CPLASF_/article/details/108799381
+
