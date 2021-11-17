@@ -5,7 +5,7 @@
 
 偏八股
 
-Ref: 这些都整理的更好, star
+Ref: star
 
 https://github.com/minfei-miffy/Java-mianshi-note
 
