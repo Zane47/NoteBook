@@ -97,6 +97,22 @@ explain select name,age from `hui_biao_test` where name = '张三';
 
 说明当前联合索引的非叶子节点中，存储的是联合索引对应的信息；仅通过联合索引就可以获取到select所需要的信息，这样，就无须再经过主键索引查询了
 
+---
+
+## 索引失效
+
+https://segmentfault.com/a/1190000021464570
+
+
+
+
+
+
+
+
+
+
+
 
 
 ---
