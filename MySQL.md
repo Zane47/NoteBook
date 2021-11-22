@@ -1,3 +1,6 @@
+![思维导图](https://pic4.zhimg.com/v2-b6b408dc996bfa47a89dd421ff27171b_r.jpg)
+
+
 # · 基础知识
 
 ## 数据库范式
