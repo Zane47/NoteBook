@@ -288,7 +288,7 @@ update tb_student A set A.age='19' where A.name=' 张三 ';
 
 # · MySQL断电恢复
 
-
+https://zhuanlan.zhihu.com/p/100009790
 
 
 
