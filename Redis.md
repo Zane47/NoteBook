@@ -96,9 +96,7 @@ Redis解决了这些问题的接触上又增加了新的特性
 
 **1.2 只能保存文本类型**
 
-C 语言的字符串用 “\0” 字符作为结尾标记有个缺陷。假设有个字符串中有个 “\0” 字符，这时在操作这个字符串时就会提早结束，比如 “xiao\0lin” 字符串，计算字符串长度的时候则会是 4
-
-这些限制使得 C 语言的字符串只能保存文本数据，***不能保存像图片、音频、视频文化这样的二进制数据  -> 这也是一个可以改进的地方)***
+C 语言的字符串用 “\0” 字符作为结尾标记有个缺陷。假设有个字符串中有个 “\0” 字符，这时在操作这个字符串时就会提早结束，比如 “xiao\0lin” 字符串,计算字符串长度的时候则会是 4, 这些限制使得 C 语言的字符串只能保存文本数据。对于一些二进制文件, 例如图片, 内容可能包含空格, 因此C语言的字符串无法正确读取。总结一下, ***不能保存像图片、音频、视频文化这样的二进制数据  -> 这也是一个可以改进的地方)***
 
 **1.3 标准库的字符串操作函数不安全**
 
@@ -115,7 +113,7 @@ C 语言的字符串是不会记录自身的缓冲区大小的，所以 strcat �
 
 而且，strcat 函数和 strlen 函数类似，时间复杂度也很高，也都需要先通过遍历字符串才能得到目标字符串的末尾。然后对于 strcat 函数来说，还要再遍历源字符串才能完成追加，对字符串的操作效率不高。
 
-### 2. SDS结构设计
+### 2. SDS结构设计, 对比C语言字符数组的好处
 
 ```c++
 // redis5.0中的数据结构
@@ -140,7 +138,7 @@ C 语言的字符串长度获取 `strlen `函数，需要通过遍历的方式�
 
 **2.2 二进制安全, 保存任意格式的二进制数据**
 
-因为 SDS 不需要用 “\0” 字符来标识字符串结尾了，而且 SDS 的 API 都是以处理二进制的方式来处理 SDS 存放在 buf[] 里的数据，程序不会对其中的数据做任何限制，数据写入的时候时什么样的，它被读取时就是什么样的。
+因为 SDS 不需要用 “\0” 字符来标识字符串结尾了，而且 SDS 的 API 都是以处理二进制的方式来处理 SDS 存放在 buf[] 里的数据。并且 SDS 不是以空字符串来判断是否结束，而是以*len 属性表示的长度来判断字符串是否结束*。
 
 通过使用二进制安全的 SDS，而不是 C 字符串，使得 Redis 不仅 可以保存文本数据，也可以**保存任意格式的二进制数据。**
 
@@ -216,6 +214,89 @@ int main() {
 
 按照实际占用字节数进行分配内存的，这样可以节省内存空间。
 
+**2.5 减少修改字符串的内存重新分配次数**
+
+C 语言中如果要修改字符串，必须要重新分配内存（先释放再申请），因为如果没有重新分配，字符串长度增大时会造成***内存缓冲区溢出***，字符串长度减小时会造成***内存泄露***。
+
+而对于 SDS，由于 len 属性和 free 属性的存在，对于修改字符串 SDS 实现了空间预分配和惰性空间释放两种策略：
+
+* *空间预分配*：对字符串进行空间扩展的时候，扩展的内存比实际需要的多，这样可以减少连续执行字符串增长操作所需的内存重分配次数。
+
+* *惰性空间释放*：对字符串进行缩短操作时，程序不立即使用内存重新分配来回收缩短后多余的字节，而是使用 free 属性将这些字节的数量记录下来，等待后续使用。（当然 SDS 也提供了相应的 API，当我们有需要时，也可以手动释放这些未使用的空间。）
+
+
+### 3. 五种 sdshdr
+
+在 redis3.2 分支出现之前字符串只用 sdshdr 一个类型（上文说到的 SDS），这种结构存在一个弊端，比如每次创建一个字符串，由于 len（int 类型，一般操作系统占 4 个字节）+ free，最少占用 8 个字节，所以是不管字符串有多长，都要最少占用 8 个字节，比较浪费。
+
+3.2 分支引入了五种 sdshdr 类型，*每次在创建一个 sds 时根据 sds 的实际长度判断应该选择什么类型的 sdshdr*，不同类型的 sdshdr 占用的内存空间不同。这种细分可以极大的节省空间，下面是 3.2 版本的 sdshdr 定义：
+
+```c++
+struct __attribute__ ((__packed__)) sdshdr5 {  
+    //实际上这个类型redis不会被使用，因为没有剩余空间的字段，不方便扩容。他的内部结构也与其他sdshdr不同，直接看sdshdr8就好。  
+    unsigned char flags;//一共8位，低3位用来存放真实的flags(类型),高5位用来存放len(长度)。  
+    char buf[];//sds实际存放的位置
+};
+struct __attribute__ ((__packed__)) sdshdr8 {  
+    uint8_t len;//表示当前sds的长度(单位是字节)  
+    //表示已为sds分配的内存大小(单位是字节)  
+    //用一个字节表示当前sdshdr的类型，因为有sdshdr有五种类型，所以至少需要3位来表示  
+    //000:sdshdr5，001:sdshdr8，010:sdshdr16，011:sdshdr32，100:sdshdr64。高5位用不到所以都为0。  
+    uint8_t alloc; 
+    unsigned char flags;  char buf[];//sds实际存放的位置
+};
+struct __attribute__ ((__packed__)) sdshdr16 {  
+    uint16_t len; /* used */  
+    uint16_t alloc; /* excluding the header and null terminator */  
+    unsigned char flags; /* 3 lsb of type, 5 unused bits */  
+    char buf[];
+};
+struct __attribute__ ((__packed__)) sdshdr32 {  
+    uint32_t len; /* used */  
+    uint32_t alloc; /* excluding the header and null terminator */  
+    unsigned char flags; /* 3 lsb of type, 5 unused bits */  
+    char buf[];
+};
+struct __attribute__ ((__packed__)) sdshdr64 {  
+    uint64_t len; /* used */  
+    uint64_t alloc; /* excluding the header and null terminator */  
+    unsigned char flags; /* 3 lsb of type, 5 unused bits */  
+    char buf[];
+};
+```
+
+结构原理图:
+
+<img src="img/Redis/image-20211130141956024.png" alt="image-20211130141956024" style="zoom:67%;" />
+
+<img src="img/Redis/image-20211130142013859.png" alt="image-20211130142013859" style="zoom:67%;" />
+
+sdshdr8 各属性含义: 
+
+- len：表示当前 sds 的长度，不包括'/0'终止符，*可直接获取获取长度*, 注意单位是字节
+- alloc：当前以分配的大小(3.2 以前的版本用的 free 是表示还剩 free 字节可用空间)，不包括'/0'终止符，注意单位是字节
+- flags: 表示当前 sdshdr 的类型，声明为 char ，则表示一共有 1 个字节(8 位)，仅用低三位就可以表示所有 5 种 sdshdr 类型(参考上图表示): 000:sdshdr5，001:sdshdr8，010:sdshdr16，011:sdshdr32，100:sdshdr64。高5位用不到所以都为0。
+
+根据要存储的 sds 的长度, 决定用什么类型的 sdshdr 来存放它的信息
+redis 在创建一个 sds 之前，会调用 **「sdsReqType(size_t string_size)来判断用哪个 sdshdr」**。该函数传递一个 sds 的*长度作为参数*，返回应该选用的 sdshdr 类型。
+
+<img src="img/Redis/image-20211130142220447.png" alt="image-20211130142220447" style="zoom:67%;" />
+
+注意这里面其实我们判断使用sdshrd用那个类型，只需要flags&SDS_TYPE_MASK 和 SDS_TYPE_n 比较即可(之所以需要 SDS_TYPE_MASK 是因为有 sdshdr5 这个特例，它的高 5 位不一定为 0）
+
+所以涉及到一些关于字符串相关的函数，都存放在sds.h 文件中，比如求字符串长度的函数，只需要将sds作为参数，*通过比较 flags&SDS_TYPE_MASK 和 SDS_TYPE_n 来判断该 sds 属于哪种类型 sdshdr，再按照指定的 sdshdr 类型取出 sds 的相关信息*。 例如 sdslen 函数（获取字符串长度）:
+
+<img src="img/Redis/image-20211130142319883.png" alt="image-20211130142319883" style="zoom:50%;" />
+
+其他的函数;
+
+```c++
+static inline size_t sdsavail(const sds s);
+static inline void sdssetlen(sds s, size_t newlen);
+static inline void sdsinclen(sds s, size_t inc);
+static inline size_t sdsalloc(const sds s);
+static inline void sdssetalloc(sds s, size_t newlen);
+```
 
 
 
@@ -226,9 +307,43 @@ int main() {
 
 
 
-## List
 
 
+## List -> ziplist linkedlist -> quicklist
+
+#### 1.
+
+ListNode双向链表:
+
+```c++
+typedef struct listNode {
+    //前置节点
+    struct listNode *prev;
+    //后置节点
+    struct listNode *next;
+    //节点的值
+    void *value;
+} listNode;
+```
+
+Redis 在 listNode 结构体基础上又封装了 list 这个数据结构，这样操作起来会更方便
+
+```c++
+typedef struct list {
+    //链表头节点
+    listNode *head;
+    //链表尾节点
+    listNode *tail;
+    //节点值复制函数
+    void *(*dup)(void *ptr);
+    //节点值释放函数
+    void (*free)(void *ptr);
+    //节点值比较函数
+    int (*match)(void *ptr, void *key);
+    //链表节点数量
+    unsigned long len;
+} list;
+```
 
 
 
