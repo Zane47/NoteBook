@@ -158,7 +158,63 @@ C 语言的字符串标准库提供的字符串操作函数，大多数（比如
 
 所以，使用 SDS 即不需要手动修改 SDS 的空间大小，也不会出现缓冲区溢出的问题。
 
-2.4 节省内存空间
+**2.4 节省内存空间**
+
+**2.4.1 flag表示不同的类型**
+
+SDS 结构中有个` flags `成员变量，表示的是 SDS 类型: sdshdr5、sdshdr8、sdshdr16、sdshdr32 和 sdshdr64。
+
+主要区别就在于，它们数据结构中的 **len 和 alloc** 成员变量的数据类型不同, 比如 sdshdr16 和 sdshdr32:
+
+```C++
+struct __attribute__ ((__packed__)) sdshdr16 {
+    uint16_t len;
+    uint16_t alloc; 
+    unsigned char flags; 
+    char buf[];
+};
+struct __attribute__ ((__packed__)) sdshdr32 {
+    uint32_t len;
+    uint32_t alloc; 
+    unsigned char flags;
+    char buf[];
+};
+```
+
+- sdshdr16 类型的 len 和 alloc 的数据类型都是 uint16_t，表示字符数组长度和分配空间大小不能超过2^16
+- sdshdr32 则都是 uint32_t，表示表示字符数组长度和分配空间大小不能超过 2^32 。
+
+**之所以 SDS 设计不同类型的结构体，是为了能灵活保存不同大小的字符串，从而有效节省内存空间**。比如，在保存小字符串时，结构头占用空间也比较少。
+
+**2.4.2** __ attribute __ ((packed))
+
+除了设计不同类型的结构体，Redis 在编程上还**使用了专门的编译优化来节省内存空间**，即在 struct 声明了 `__attribute__ ((packed))` ，它的作用是：**告诉编译器取消结构在编译过程中的优化对齐，按照实际占用字节数进行对齐**。
+
+比如，sdshdr16 类型的 SDS，默认情况下，编译器会按照 16 字节对其的方式给变量分配内存，这意味着，即使一个变量的大小不到 16 个字节，编译器也会给它分配 16 个字节。
+
+```c++
+#include <stdio.h>
+ struct test1 {
+    char a;
+    int b;
+ } test1;
+int main() {
+     printf("%lu\n", sizeof(test1));
+     return 0;
+}
+```
+
+这个结构体大小计算出来是 8。因为默认情况下，编译器是使用字节对其的方式分配内存，虽然 char 类型只占一个字节，但是由于成员变量里有 int 类型，它占用了 4 个字节，所以在成员变量为 char 类型分配内存时，会分配 4 个字节，其中这多余的 3 个字节是为了字节对其而分配的，相当于有**3 个字节被浪费掉了**。
+
+<img src="img/Redis/6402.webp" style="zoom:45%;" />
+
+如果不想编译器使用字节对其的方式进行分配内存，可以采用了 `__attribute__ ((packed))` 属性定义结构体，这样一来，结构体实际占用多少内存空间，编译器就分配多少空间。
+
+比如，用 `__attribute__ ((packed))` 属性定义同样的结构体, 打印的结果是 5（1 个字节 char  + 4 字节 int）
+
+<img src="img/Redis/6403.webp" style="zoom:50%;" />
+
+按照实际占用字节数进行分配内存的，这样可以节省内存空间。
 
 
 
