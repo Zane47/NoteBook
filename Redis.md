@@ -42,14 +42,17 @@ Memcached 是分布式缓存最开始兴起的那会，比较常用的。后来�
 
 Redis的底层数据结构有六种: 
 
-<img src="https://mmbiz.qpic.cn/mmbiz_png/J0g14CUwaZfm9oXYxAKmUq9ezu14J4sMGBkAV80RrhbpyZ4PgqGCIJmEp8Bx7xFPuX3G4Hw9YiaCuL9mJPyxJicg/640?wx_fmt=png&tp=webp&wxfrom=5&wx_lazy=1&wx_co=1" style="zoom:60"/>
+<img src="img/Redis/640.webp" alt="图片" style="zoom:60%;" />
 
-* String -> SDS
 
-- List 数据类型底层数据结构由「双向链表」或「压缩表列表」实现；
-- Hash 数据类型底层数据结构由「压缩列表」或「哈希表」实现；
-- Set 数据类型底层数据结构由「哈希表」或「整数集合」实现；
-- Zset 数据类型底层数据结构由「压缩列表」或「跳表」实现；
+
+| 数据类型 | 底层数据结构                                                 |
+| -------- | ------------------------------------------------------------ |
+| String   | SDS                                                          |
+| List     | 3.2之前: [双向链表linkedlist] 或 [压缩列表ziplist], <br />3.2之后: 升级为 [quicklist(双向链表)] |
+| Hash     | 「压缩列表ziplist」或「哈希表hashtable」                     |
+| Set      | 「哈希表hashtable」或「整数集合」                            |
+| Zset     | 「压缩列表ziplist」或「跳表」                                |
 
 整体的结构mindmap: 
 
@@ -61,19 +64,60 @@ Redis的底层数据结构有六种:
 Redis 是用 C 语言实现的，但是它没有直接使用 C 语言的 char* 字符数组来实现字符串，而是自己封装了一个名为简单动态字符串（simple dynamic string，SDS） 的数据结构来表示字符串，并将 SDS 作为 Redis 的默认字符串表示。也就是 Redis 的 String 数据类型的底层数据结构是 SDS。
 
 ```c
-struct sdshdr{     
-    //len 保存了SDS保存字符串的长度     
-    int len;     
-    //free 记录了buf数组中未使用的字节数量     
-    int free;     
-    //buf[] 数组用来保存字符串的每个元素     
-    char buf[];
+struct sdshdr{       
+    int len; //len 保存了SDS保存字符串的长度   
+    int free;//free 记录了buf数组中未使用的字节数量     
+    char buf[];//buf[] 数组用来保存字符串的每个元素     
 }
+// redis5.0中的数据结构
+len; // 字符串长度: 
+alloc; // 分配的空间长度
+flags; // sds类型
+buf[]; // 字节数组
 ```
 
+### 1. **为什么不用直接使用C 语言的 char* 字符数组来实现字符串**
+
+- 1.1 获取字符串长度的时间复杂度为  O（N）；
+- 1.2 字符串的结尾是以 “\0” 字符标识，而且字符必须符合某种编码（比如ASCII），只能保存文本数据，不能保存二进制数据；
+- 1.3 字符串操作函数不高效且不安全，比如可能会发生缓冲区溢出，从而造成程序运行终止；
+
+Redis解决了这些问题的接触上又增加了新的特性
+
+**1.1 获取字符串长度O(N)**
+
+<img src="img/Redis/640-16382393914515.webp" alt="图片" style="zoom: 50%;" />
+
+在 C 语言里，对字符串操作时，char * 指针只是指向字符数组的起始位置，而**字符数组的结尾位置就用“\0”表示，意思是指字符串的结束**。
+
+因此，C 语言标准库中字符串的操作函数，就通过判断字符是不是“\0”，如果不是说明字符串还没结束，可以继续操作，如果是则说明字符串结束了，停止操作。
+
+举个例子，C 语言获取字符串长度的函数 strlen，就是通过字符数组中的每一个字符，并进行计数，等遇到字符为“\0”后，就会停止遍历，然后返回已经统计到的字符个数，即为字符串长度。***C 语言获取字符串长度操作的时间复杂度是 O(N) -> 这是一个可以改进的地方)***
+
+**1.2 只能保存文本类型**
+
+C 语言的字符串用 “\0” 字符作为结尾标记有个缺陷。假设有个字符串中有个 “\0” 字符，这时在操作这个字符串时就会提早结束，比如 “xiao\0lin” 字符串，计算字符串长度的时候则会是 4
+
+这些限制使得 C 语言的字符串只能保存文本数据，***不能保存像图片、音频、视频文化这样的二进制数据  -> 这也是一个可以改进的地方)***
+
+**1.3 标准库的字符串操作函数不安全**
+
+C 语言标准库中字符串的操作函数是很不安全的，对程序员很不友好，稍微一不注意，就会导致缓冲区溢出。
+
+举个例子，strcat 函数是可以将两个字符串拼接在一起。
+
+```C
+//将 src 字符串拼接到 dest 字符串后面 
+char *strcat(char *dest, const char* src);
+```
+
+C 语言的字符串是不会记录自身的缓冲区大小的，所以 strcat 函数假定程序员在执行这个函数时，已经为 dest 分配了足够多的内存，可以容纳 src 字符串中的所有内容，而一旦这个假定不成立，就会***发生缓冲区溢出将可能会造成程序运行终止，-> (这是一个可以改进的地方)***
+
+而且，strcat 函数和 strlen 函数类似，时间复杂度也很高，也都需要先通过遍历字符串才能得到目标字符串的末尾。然后对于 strcat 函数来说，还要再遍历源字符串才能完成追加，对字符串的操作效率不高。
 
 
 
+### 2. SDS结构设计
 
 
 
@@ -882,10 +926,19 @@ Cache Aside Pattern 中遇到写请求是这样的：更新 DB，然后直接删
 1. **缓存失效时间变短（不推荐，治标不治本）** ：我们让缓存数据的过期时间变短，这样的话缓存就会从数据库中加载数据。另外，这种解决办法对于先操作缓存后操作数据库的场景不适用。
 2. **增加 cache 更新重试机制（常用）**： 如果 cache 服务当前不可用导致缓存删除失败的话，我们就隔一段时间进行重试，重试次数可以自己定。如果多次重试还是失败的话，我们可以把当前更新失败的 key 存入队列中，等缓存服务可用之后，再将缓存中对应的 key 删除即可。
 
-### 参考
+# Ref:
 
 - 《Redis 开发与运维》
 - 《Redis 设计与实现》
 - Redis 命令总结：http://Redisdoc.com/string/set.html
 - 通俗易懂的 Redis 数据结构基础教程：[https://juejin.im/post/5b53ee7e5188251aaa2d2e16](https://juejin.im/post/5b53ee7e5188251aaa2d2e16)
 - WHY Redis choose single thread (vs multi threads): [https://medium.com/@jychen7/sharing-redis-single-thread-vs-multi-threads-5870bd44d153](https://medium.com/@jychen7/sharing-redis-single-thread-vs-multi-threads-5870bd44d153)
+- [图解 Redis 数据结构](https://mp.weixin.qq.com/s/qptE172slg_6Tl1yuzdbfw)
+
+* [Redis知识点&面试点总结](https://javaguide.cn/database/redis/redis%E7%9F%A5%E8%AF%86%E7%82%B9&%E9%9D%A2%E8%AF%95%E9%A2%98%E6%80%BB%E7%BB%93/)
+
+* [【大课堂】Redis中字符串的表示](https://juejin.cn/post/6862154200441815054#heading-1)
+
+* [【大课堂】Redis中string、list的底层数据结构原理](https://juejin.cn/post/6863256540439117831)
+
+* [【大课堂】Redis中hash、set、zset的底层数据结构原理](https://juejin.cn/post/6863258283483807752)
