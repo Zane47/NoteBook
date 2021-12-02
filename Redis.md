@@ -1064,17 +1064,13 @@ Redis 则采用一种巧妙的方法是，**跳表在创建节点的时候，随
 
 [the skip list](https://www.zhihu.com/question/20202931)
 
+[数学计算](https://blog.csdn.net/hebtu666/article/details/102556064)
 
-
-
-
-
-
-
-
-
-
-
+* skiplist的复杂度和红黑树一样，实现起来更简单, 跳表代码实现更易读, 更易于实现、调试
+* 红黑树在插入和删除的时候可能需要做一些rebalance的操作，这样的操作可能会涉及到整个树的其他部分，而skiplist的操作显然更加局部性一些, 只需要修改相邻节点的指针，锁需要盯住的节点更少，因此在这样的情况下性能好一些。
+* 跳表区间查找效率更高, 排序集通常是许多 ZRANGE 或 ZREVRANGE 操作的目标，即将跳过列表作为链表遍历.在平衡树上，我们找到指定范围的小值之后，还需要以中序遍历的顺序继续寻找其它不超过大值的节点。如果不对平衡树进行一定的改造，这里的中序遍历并不容易实现。而在skiplist上进行范围查找就非常简单，只需要在找到小值之后，对第1层链表进行若干步的遍历就可以实现。
+* 从内存占用上来说，skiplist比平衡树更灵活一些。一般来说，平衡树每个节点包含2个指针（分别指向左右子树），而skiplist每个节点包含的指针数目平均为1/(1-p)，具体取决于参数p的大小。如果像Redis里的实现一样，取p=1/4，那么平均每个节点包含1.33个指针，比平衡树更有优势。
+  
 
 
 
@@ -1287,6 +1283,23 @@ rehash 的触发条件跟**负载因子（load factor）**有关系。
 
 - **当负载因子大于等于 1 ，并且 Redis 没有在执行 bgsave 命令或者 bgrewiteaof 命令，也就是没有执行 RDB 快照或没有进行 AOF 重写的时候，就会进行 rehash 操作。**
 - **当负载因子大于等于 5 时，此时说明哈希冲突非常严重了，不管有没有有在执行 RDB 快照或 AOF 重写，都会强制进行 rehash 操作。**
+
+
+## 面试题
+
+### 为什么有序集合同时使用跳跃表和字典来实现
+
+![](img/Redis/202003141840388.png)
+
+
+
+
+
+
+
+
+
+
 
 # Redis 缓存
 
@@ -2166,9 +2179,17 @@ Cache Aside Pattern 中遇到写请求是这样的：更新 DB，然后直接删
 - [图解 Redis 数据结构](https://mp.weixin.qq.com/s/MGcOl1kGuKdA7om0Ahz5IA)
 
 * [Redis知识点&面试点总结](https://javaguide.cn/database/redis/redis%E7%9F%A5%E8%AF%86%E7%82%B9&%E9%9D%A2%E8%AF%95%E9%A2%98%E6%80%BB%E7%BB%93/)
-
 * [【大课堂】Redis中字符串的表示](https://juejin.cn/post/6862154200441815054#heading-1)
-
 * [【大课堂】Redis中string、list的底层数据结构原理](https://juejin.cn/post/6863256540439117831)
-
 * [【大课堂】Redis中hash、set、zset的底层数据结构原理](https://juejin.cn/post/6863258283483807752)
+* 作者：程序员的喵
+  链接：https://www.zhihu.com/question/20202931/answer/16086538
+  来源：知乎
+  著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+
+* 版权声明：本文为CSDN博主「小码哥(^_^)」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
+  原文链接：https://blog.csdn.net/qq9808/article/details/104865385
+
+* [redis——为什么选择了跳表而不是红黑树？](https://blog.csdn.net/hebtu666/article/details/102556064)
+
+  
