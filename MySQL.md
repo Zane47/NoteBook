@@ -1,7 +1,7 @@
 ![思维导图](https://pic4.zhimg.com/v2-b6b408dc996bfa47a89dd421ff27171b_r.jpg)
 
 
-# · 基础知识
+# 基础知识
 
 ## 数据库范式
 
@@ -9,15 +9,15 @@
 
 
 
-# · 存储引擎
+# 存储引擎
 
 
 
-# · 索引
+# 索引
 
 
 
-## 1. 为什么用B+树, 不用B树
+## 为什么用B+树, 不用B树
 
 因为B+比B树更适合实际应用中操作系统的文件索引和数据库索引. 
 
@@ -37,7 +37,7 @@ B+树的叶节点由一条链相连，因此，当需要进行一次全数据遍
 而B树则需要对树的每一层进行遍历，这会需要更多的内存置换次数，因此也就需要花费更多的时间
 
 
-## 1. 回表查询
+##  回表查询
 
 使用explain查看sql语句的执行计划.
 
@@ -126,9 +126,47 @@ https://segmentfault.com/a/1190000021464570
 
 
 
+
+# MySQL事务
+>如何解决幻读?
+>
+>隔离级别有哪些, 每个级别有什么问题, 怎么解决. MySQL默认隔离级别
+>
+>如何通过枷锁的方式解决幻读
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# MySQL锁机制
+
+>MySQL 间隙锁有没有了解，死锁有没有了解，写一段会造成死锁的 sql 语句，死锁发生了如何解决，MySQL 有没有提供什么机制去解决死锁
+> 数据库的乐观锁和悲观锁？
+>MySQL 中有哪几种锁，列举一下？
+>MySQL中InnoDB引擎的行锁是怎么实现的？
+>
+
+
+
+
+
+
 ---
 
-# · MVCC(多版本并发控制)
+# MVCC(多版本并发控制)
 
 MVCC(Multi-Version Concurrency Control) 
 
@@ -144,13 +182,17 @@ MVCC(Multi-Version Concurrency Control)
 
 ---
 
-# · 读写分离
+# 读写分离
 
 
 
 
 
-# · 分库分表
+
+
+
+
+# 分库分表
 
 
 
@@ -158,7 +200,7 @@ MVCC(Multi-Version Concurrency Control)
 
 ---
 
-# · 一条SQL语句在MySQL执行过程
+# 一条SQL语句在MySQL执行过程
 分析一个 sql 语句在 MySQL 中的执行流程，包括 sql 的查询在 MySQL 内部会怎么流转，sql 语句的更新是怎么完成的。
 
 在分析之前我会先带着你看看 MySQL 的基础架构，知道了 MySQL 由那些组件组成以及这些组件的作用是什么，可以帮助我们理解和解决这些问题。
@@ -286,7 +328,7 @@ update tb_student A set A.age='19' where A.name=' 张三 ';
 
 ---
 
-# · MySQL断电恢复
+# 断电恢复
 
 https://zhuanlan.zhihu.com/p/100009790
 
@@ -294,7 +336,17 @@ https://zhuanlan.zhihu.com/p/100009790
 
 ---
 
-# · redo log, undo log, binlog
+# 三大日志
+
+redo log, undo log, binlog
+
+
+
+
+
+# 性能优化
+
+
 
 
 
@@ -302,7 +354,7 @@ https://zhuanlan.zhihu.com/p/100009790
 
 ---
 
-# · 一条SQL语句执行得很慢的原因有哪些？
+# 一条SQL语句执行得很慢的原因有哪些？
 
 https://mp.weixin.qq.com/s/YKmFEtHcZPBn1S9so0kxYw
 
@@ -314,7 +366,7 @@ https://mp.weixin.qq.com/s/YKmFEtHcZPBn1S9so0kxYw
 
 ---
 
-# · Reference
+# Ref
 
 * 执行SQL语句: https://snailclimb.gitee.io/javaguide/#/docs/database/mysql/how-sql-executed-in-mysql
 
@@ -322,3 +374,4 @@ https://mp.weixin.qq.com/s/YKmFEtHcZPBn1S9so0kxYw
   版权声明：本文为CSDN博主「小小少年_」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
   原文链接：https://blog.csdn.net/CPLASF_/article/details/108799381
 
+* [MySQL 三万字精华总结 + 面试100 问](https://mp.weixin.qq.com/s/MCFHNOQnTtJ6MGVjM3DP4A)
