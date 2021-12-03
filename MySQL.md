@@ -181,7 +181,7 @@ Auto Commit：MySQL 默认采用自动提交模式。也就是说，如果不显
 
 MySQL 默认采用自动提交模式。也就是说，如果不显式使用`START TRANSACTION`语句来开始一个事务，那么每个查询操作都会被当做一个事务并自动提交
 
-## 并发事务的并发一致性问题
+## 并发事务的并发一致性问题 -> 隔离级别
 
 ### 问题分类
 
@@ -211,7 +211,7 @@ MySQL 默认采用自动提交模式。也就是说，如果不显式使用`STAR
 
 ---
 
-如果使用锁机制来实现这两种隔离级别，在可重复读中，该sql第一次读取到数据后，就将这些数据加锁，其它事务无法修改这些数据，就可以实现可重复读了。但这种方法却无法锁住insert的数据，所以当事务A先前读取了数据，或者修改了全部数据，事务B还是可以insert数据提交，这时事务A就会发现莫名其妙多了一条之前没有的数据，这就是幻读，不能通过行锁来避免。需要Serializable隔离级别 ，读用读锁，写用写锁，读锁和写锁互斥，这么做可以有效的避免幻读、不可重复读、脏读等问题，但会极大的降低数据库的并发能力。
+如果使用锁机制来实现这两种隔离级别，在可重复读中，该sql第一次读取到数据后，就将这些数据加锁，其它事务无法修改这些数据，就可以实现可重复读了。但这种方法却无法锁住insert的数据，所以当事务A先前读取了数据，或者修改了全部数据，事务B还是可以insert数据提交，这时事务A就会发现莫名其妙多了一条之前没有的数据，这就是幻读，不能通过行锁来避免。需要**Serializable**隔离级别 ，**读用读锁，写用写锁，读锁和写锁互斥**，这么做可以有效的**避免幻读**、不可重复读、脏读等问题，但会**极大的降低数据库的并发能力**。
 
 所以说**不可重复读和幻读最大的区别，就在于如何通过锁机制来解决他们产生的问题**。
 
@@ -250,7 +250,7 @@ MySQL 默认采用自动提交模式。也就是说，如果不显式使用`STAR
 - 未提交读(Read Uncommitted)：允许脏读，也就是可能读取到其他会话中未提交事务修改的数据
 - 提交读(Read Committed)：只能读取到已经提交的数据。Oracle等多数数据库默认都是该级别 (不重复读)
 - 可重复读(Repeated Read)：可重复读。在同一个事务内的查询都是事务开始时刻一致的，MySQL的InnoDB默认级别。在SQL标准中，该隔离级别消除了不可重复读，但是还存在幻象读
-- 串行读(Serializable)：完全串行化的读，每次读都需要获得表级共享锁，读写相互都会阻塞
+- 串行读(Serializable)：完全串行化的读，每次读都需要获得表级共享锁，读写相互都会阻塞, 读用读锁, 写用写锁
 
 查看当前数据库的事务隔离级别: `show variables like 'tx_isolation'`
 
@@ -269,10 +269,6 @@ show variables like 'tx_isolation'
 | tx_isolation  | REPEATABLE-READ |
 +---------------+-----------------+
 ```
-
-
-
-
 
 ## MySQL锁机制
 >MySQL 间隙锁有没有了解，死锁有没有了解，写一段会造成死锁的 sql 语句，死锁发生了如何解决，MySQL 有没有提供什么机制去解决死锁
@@ -298,11 +294,13 @@ show variables like 'tx_isolation'
 
 ### Next-Key Locks
 
+MVCC 不能解决幻读问题，Next-Key Locks 就是为了解决这个问题而存在的。在可重复读（REPEATABLE READ-RR）隔离级别下，使用 MVCC + Next-Key Locks 可以解决幻读问题。
+
+> Next-Key锁 = record lock行锁 + gap lock（间隙锁）。
+>
+> 行锁防止别的事务修改或删除，GAP锁防止别的事务新增，行锁和GAP锁结合形成的的Next-Key锁共同解决了RR级别在写数据时的幻读问题。
 
 
-MVCC 不能解决幻影读问题，Next-Key Locks 就是为了解决这个问题而存在的。在可重复读（REPEATABLE READ）隔离级别下，使用 MVCC + Next-Key Locks 可以解决幻读问题。
-
-Next-Key锁是行锁和GAP（间隙锁）的合并。行锁防止别的事务修改或删除，GAP锁防止别的事务新增，行锁和GAP锁结合形成的的Next-Key锁共同解决了RR级别在写数据时的幻读问题。
 
 
 
@@ -326,7 +324,9 @@ Next-Key锁是行锁和GAP（间隙锁）的合并。行锁防止别的事务修
 
 可**串行化隔离级别(Serializable)**需要对所有读取的行都加锁，单纯使用 MVCC 无法实现
 
-在锁一节中可以知道, 加锁能解决多个事务同时执行时出现的并发一致性问题。在实际场景中读操作往往多于写操作，因此又引入了读写锁来避免不必要的加锁操作，例如读和读没有互斥关系。读写锁中读和写操作仍然是互斥的，而 MVCC 利用了**多版本**的思想，**写操作更新最新的版本快照**，而**读操作去读旧版本快照**，没有互斥关系，这一点和 *CopyOnWrite* 类似。
+在锁一节中可以知道, 加锁能解决多个事务同时执行时出现的并发一致性问题。在实际场景中读操作往往多于写操作，因此又引入了读写锁来避免不必要的加锁操作，例如读和读没有互斥关系。读写锁中读和写操作仍然是互斥的，
+
+> 而 MVCC 利用了**多版本**的思想，**写操作更新最新的版本快照**，而**读操作去读旧版本快照**，没有互斥关系，这一点和 *CopyOnWrite* 类似。
 
 在 MVCC 中事务的**修改**操作（DELETE、INSERT、UPDATE）会为数据行新增一个版本快照。
 
@@ -397,6 +397,34 @@ DELETE;
 SELECT * FROM table WHERE ? lock in share mode;
 SELECT * FROM table WHERE ? for update;
 ```
+
+
+
+
+
+## 如何解决幻读
+
+## 幻读产生的原因
+
+幻读: 幻读与不可重复读类似。它发生在一个事务A读取了几行数据，接着另一个并发事务B插入了一些数据时。在随后的查询中，事务A就会发现多了一些原本不存在的记录，就好像发生了幻觉一样，所以称为幻读
+
+**行锁只能锁住行，但是新插入记录这个动作，要更新的是记录之间的“间隙”。因此，为了解决幻读问题，InnoDB只好引入新的锁，也就是间隙锁(Gap Lock)**
+
+
+
+### MVCC + Next-key-Lock 防止幻读
+
+`InnoDB`存储引擎在 RR (repeatable read)级别下通过 `MVCC`和 `Next-key Lock` 来解决幻读问题：
+
+**1、执行普通 `select`，此时会以 `MVCC` 快照读的方式读取数据**
+
+在快照读的情况下，RR 隔离级别只会在事务开启后的第一次查询生成 `Read View` ，并使用至事务提交。所以在生成 `Read View` 之后其它事务所做的更新、插入记录版本对当前事务并不可见，实现了可重复读和防止快照读下的 “幻读”
+
+**2、执行 select...for update/lock in share mode、insert、update、delete 等当前读**
+
+在当前读下，读取的都是最新的数据，如果其它事务有插入新的记录，并且刚好在当前事务查询范围内，就会产生幻读！`InnoDB` 使用 [Next-key Lock  (opens new window)](https://dev.mysql.com/doc/refman/5.7/en/innodb-locking.html#innodb-next-key-locks) 来防止这种情况。当执行当前读时，会锁定读取到的记录的同时，锁定它们的间隙，防止其它事务在查询范围内插入数据。只要我不让你插入，就不会发生幻读
+
+
 
 
 
@@ -604,5 +632,50 @@ https://mp.weixin.qq.com/s/YKmFEtHcZPBn1S9so0kxYw
 * [MySQL 三万字精华总结 + 面试100 问](https://mp.weixin.qq.com/s/MCFHNOQnTtJ6MGVjM3DP4A)
 * [javaguide](https://javaguide.cn/database/mysql/transaction-isolation-level/#)
 * [cyc2018](http://www.cyc2018.xyz/%E6%95%B0%E6%8D%AE%E5%BA%93/%E6%95%B0%E6%8D%AE%E5%BA%93%E7%B3%BB%E7%BB%9F%E5%8E%9F%E7%90%86.html)
-
 * [[Innodb中的事务隔离级别和锁的关系](https://tech.meituan.com/2014/08/20/innodb-lock.html)
+
+
+
+
+
+https://mp.weixin.qq.com/s/MCFHNOQnTtJ6MGVjM3DP4A
+
+http://www.cyc2018.xyz/%E6%95%B0%E6%8D%AE%E5%BA%93/%E6%95%B0%E6%8D%AE%E5%BA%93%E7%B3%BB%E7%BB%9F%E5%8E%9F%E7%90%86.html#%E5%85%AD%E3%80%81next-key-locks
+
+https://javaguide.cn/database/mysql/transaction-isolation-level/#%E4%BA%8B%E5%8A%A1%E9%9A%94%E7%A6%BB%E7%BA%A7%E5%88%AB
+
+https://mp.weixin.qq.com/s?__biz=MzUxODAzNDg4NQ==&mid=2247497197&idx=1&sn=9f82f73d876636944fb75348ef568c01&scene=21#wechat_redirect
+
+https://mp.weixin.qq.com/s?__biz=MzUxODAzNDg4NQ==&mid=2247496769&idx=1&sn=30990d141185303fd0c7ecf63c125b30&scene=21#wechat_redirect
+
+
+
+https://mp.weixin.qq.com/s/4HWMXZAj1aZDHr5A301d8w
+
+https://mp.weixin.qq.com/s?__biz=MzUxODAzNDg4NQ==&mid=2247498122&idx=2&sn=f2062523af7e977a6deebe4d8be4501a&scene=21#wechat_redirect
+
+https://mp.weixin.qq.com/s?__biz=MzUxODAzNDg4NQ==&mid=2247496932&idx=1&sn=5bd840a32040998aa60c6317ccad71ac&scene=21#wechat_redirect
+
+https://javaguide.cn/database/mysql/innodb-implementation-of-mvcc/#
+
+
+
+
+
+https://www.cnblogs.com/zhoujinyi/p/3435982.html
+
+https://segmentfault.com/a/1190000016566788
+
+https://www.cnblogs.com/jian0110/p/15080603.html
+
+
+
+https://blog.csdn.net/C_J33/article/details/79487941
+
+https://www.jianshu.com/p/4f2311f38040
+
+https://cloud.tencent.com/developer/article/1546932
+
+https://tech.meituan.com/2014/08/20/innodb-lock.html
+
+https://zhuanlan.zhihu.com/p/52678870
