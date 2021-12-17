@@ -236,3 +236,9 @@ h5 {
     counter-increment: h6;
     content: counter(h1) "." counter(h2) "." counter(h3) "." counter(h4) "." counter(h5) "." counter(h6) ". "
 }
+
+
+/** 代码块字体 */
+.CodeMirror-wrap .CodeMirror-code pre {	
+	font-family: YaHei Consolas Hybrid
+}
